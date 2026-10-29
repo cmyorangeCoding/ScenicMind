@@ -363,7 +363,7 @@ npm run dev        # 默认代理 /api -> http://localhost:8080
 | 成员 | 分工 |
 |---|---|
 | hyqylr | 前端开发与架构设计：AI 架构设计、UniApp 跨端应用、交互与视觉 |
-| cmyorangeCoding | 后端开发与架构设计：Master-Agent 架构、管理后台、数据库与权限体系 |
+| cmyorangeCoding | 后端开发与架构设计：AI架构设计、管理后台、数据库与权限体系 |
 
 详见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。
 
