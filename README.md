@@ -19,8 +19,9 @@
 
 ## 演示
 
-- 🎬 **演示视频（B 站）**：`待补充`
-- 🖼️ **产品设计文档 / 答辩 PPT / 使用手册**：`待补充外链`
+- 🎬 **演示视频（B 站）**：`【【第十五届软件杯 A5 赛道】数字人导游项目视频-哔哩哔哩】 https://b23.tv/ppvdZ5R`
+- 🖼️ **产品设计文档 / 答辩 PPT / 使用手册**：`SpringAI数字人资料
+链接: https://pan.baidu.com/s/13rT9oHwB6mZBmtkXn5V1xg 提取码: 6666`
 - 🧪 **演示账号**：管理端 `admin / admin123`
 
 ![首页](docs/images/app-home.jpg)
@@ -360,9 +361,8 @@ npm run dev        # 默认代理 /api -> http://localhost:8080
 
 | 成员 | 分工 |
 |---|---|
-| 侯悦琦 | 前端开发与架构设计：AI 架构设计、UniApp 跨端应用、交互与视觉 |
-| 程萌语 | 后端开发与架构设计：Master-Agent 架构、管理后台、数据库与权限体系 |
-| 李志民 | 指导老师 |
+| hyqylr | 前端开发与架构设计：AI 架构设计、UniApp 跨端应用、交互与视觉 |
+| cmyorangeCoding | 后端开发与架构设计：Master-Agent 架构、管理后台、数据库与权限体系 |
 
 详见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。
 
