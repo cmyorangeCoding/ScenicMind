@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cmyhyq.mapper.HotScenicMapper">
+
+    <resultMap id="HotScenicVOResultMap" type="com.cmyhyq.pojo.vo.HotScenicVO">
+        <result property="scenicId" column="scenicId"/>
+        <result property="scenicName" column="scenicName"/>
+        <result property="count" column="count"/>
+    </resultMap>
+
+    <insert id="upsertInc">
+        INSERT INTO hot_scenic(`scenic_id`, `scenic_name`, `count`, `stat_date`)
+        VALUES (#{scenicId}, #{scenicName}, 1, #{statDate})
+        ON DUPLICATE KEY UPDATE
+          `count` = `count` + 1,
+          `scenic_name` = VALUES(`scenic_name`)
+    </insert>
+
+    <!-- 管理端：按时间范围查询热门景点 -->
+    <select id="selectTopScenicsByDateRange" resultMap="HotScenicVOResultMap">
+        SELECT
+            scenic_id as scenicId,
+            scenic_name as scenicName,
+            SUM(count) as count
+        FROM hot_scenic
+        WHERE stat_date &gt;= #{startDate} AND stat_date &lt;= #{endDate}
+        GROUP BY scenic_id, scenic_name
+        ORDER BY count DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 用户端/管理端总榜：查询历史总榜 TopN（不考虑时间） -->
+    <select id="selectTopScenicsAllTime" resultMap="HotScenicVOResultMap">
+        SELECT
+            scenic_id as scenicId,
+            scenic_name as scenicName,
+            SUM(count) as count
+        FROM hot_scenic
+        GROUP BY scenic_id, scenic_name
+        ORDER BY count DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 物理删除该景点的所有历史统计（用于景点被删除时） -->
+    <delete id="deleteByScenicId">
+        DELETE FROM hot_scenic WHERE scenic_id = #{scenicId}
+    </delete>
+
+    <!-- 同步更新热门景点名称（用于景点改名时） -->
+    <update id="updateScenicName">
+        UPDATE hot_scenic SET scenic_name = #{scenicName} WHERE scenic_id = #{scenicId}
+    </update>
+
+</mapper>

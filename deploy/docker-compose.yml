@@ -1,0 +1,119 @@
+name: scenicmind
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: scenicmind-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?please set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: tour_agent
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./sql/mysql:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: scenicmind-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?please set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: scenic_guide_vector
+      TZ: Asia/Shanghai
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./sql/pgvector:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d scenic_guide_vector"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: scenicmind-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ../backend
+    container_name: scenicmind-backend
+    restart: unless-stopped
+    environment:
+      MYSQL_URL: jdbc:mysql://mysql:3306/tour_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowMultiQueries=true
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PGVECTOR_HOST: postgres
+      PGVECTOR_PORT: 5432
+      PGVECTOR_DATABASE: scenic_guide_vector
+      PGVECTOR_USERNAME: postgres
+      PGVECTOR_PASSWORD: ${POSTGRES_PASSWORD}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      WEATHER_API_KEY: ${WEATHER_API_KEY:-}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-}
+      ADMIN_TOKEN_SECRET: ${ADMIN_TOKEN_SECRET:-}
+      WECHAT_APPID: ${WECHAT_APPID:-}
+      WECHAT_SECRET: ${WECHAT_SECRET:-}
+      ALIOSS_ENDPOINT: ${ALIOSS_ENDPOINT:-}
+      ALIOSS_ACCESS_KEY_ID: ${ALIOSS_ACCESS_KEY_ID:-}
+      ALIOSS_ACCESS_KEY_SECRET: ${ALIOSS_ACCESS_KEY_SECRET:-}
+      ALIOSS_BUCKET_NAME: ${ALIOSS_BUCKET_NAME:-}
+      ALIYUN_ACCESS_KEY_ID: ${ALIYUN_ACCESS_KEY_ID:-}
+      ALIYUN_ACCESS_KEY_SECRET: ${ALIYUN_ACCESS_KEY_SECRET:-}
+      ALIYUN_NLS_APP_KEY: ${ALIYUN_NLS_APP_KEY:-}
+      ALIYUN_REGION_ID: ${ALIYUN_REGION_ID:-cn-shanghai}
+      XFYUN_AVATAR_API_KEY: ${XFYUN_AVATAR_API_KEY:-}
+      XFYUN_AVATAR_API_SECRET: ${XFYUN_AVATAR_API_SECRET:-}
+      XFYUN_AVATAR_APP_ID: ${XFYUN_AVATAR_APP_ID:-}
+      XFYUN_AVATAR_SCENE_ID: ${XFYUN_AVATAR_SCENE_ID:-}
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: ../admin-web
+    container_name: scenicmind-admin
+    restart: unless-stopped
+    volumes:
+      - ./nginx/admin.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:
+  pg-data:
+  redis-data:

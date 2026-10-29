@@ -1,0 +1,114 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {}
+  },
+  "pages": [
+    {
+      "path": "pages/splash/splash",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/guideCompanion/guideCompanion",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true
+      }
+    },
+    {
+      "path": "pages/profile/profile",
+      "style": {
+        "navigationBarTitleText": "个人中心"
+      }
+    },
+    {
+      "path": "pages/aiQuestion/aiQuestion",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/routeRecommendation/routeRecommendation",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/travelJournal/travelJournal",
+      "style": {
+        "navigationBarTitleText": "游记列表"
+      }
+    },
+    {
+      "path": "pages/routeCollection/routeCollection",
+      "style": {
+        "navigationBarTitleText": "收藏路线"
+      }
+    },
+    {
+      "path": "pages/recommendRoute/recommendRoute",
+      "style": {
+        "navigationBarTitleText": "推荐路线"
+      }
+    },
+    {
+      "path": "pages/profileEdit/profileEdit",
+      "style": {
+        "navigationBarTitleText": "信息修改"
+      }
+    },
+    {
+      "path": "pages/feedback/feedback",
+      "style": {
+        "navigationBarTitleText": "意见反馈"
+      }
+    },
+    {
+      "path": "pages/feedbackList/feedbackList",
+      "style": {
+        "navigationBarTitleText": "反馈列表"
+      }
+    },
+    {
+      "path": "pages/avatarList/avatarList",
+      "style": {
+        "navigationBarTitleText": "数字人形象管理"
+      }
+    },
+    {
+      "path": "pages/travelNote/travelNote",
+      "style": {
+        "navigationBarTitleText": "游记详情"
+      }
+    },
+    {
+      "path": "pages/companionGuide/companionGuide",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "uni-app",
+    "navigationBarBackgroundColor": "#F8F8F8",
+    "backgroundColor": "#F8F8F8"
+  },
+  "app-plus": {
+    "background": "#efeff4"
+  }
+}

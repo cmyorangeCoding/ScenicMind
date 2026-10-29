@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cmyhyq.mapper.ChatHistoryMapper">
+
+    <resultMap id="SatisfactionTrendVOResultMap" type="com.cmyhyq.pojo.vo.SatisfactionTrendVO">
+        <result property="statDate" column="statDate"/>
+        <result property="avgScore" column="avgScore"/>
+        <result property="chatCount" column="chatCount"/>
+    </resultMap>
+
+    <select id="countDistinctUsers" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT user_id) as visitorCount
+        FROM chat_history
+        WHERE create_time &gt;= #{startTime} AND create_time &lt; #{endTime}
+    </select>
+
+    <select id="countChats" resultType="java.lang.Long">
+        SELECT COUNT(*) as chatCount
+        FROM chat_history
+        WHERE create_time &gt;= #{startTime} AND create_time &lt; #{endTime}
+    </select>
+
+    <select id="selectSatisfactionTrend" resultMap="SatisfactionTrendVOResultMap">
+        SELECT
+            DATE(create_time) as statDate,
+            AVG(
+                CASE emotion
+                    WHEN '满意' THEN 3.0
+                    WHEN '一般' THEN 2.0
+                    WHEN '不满' THEN 1.0
+                    ELSE NULL
+                END
+            ) as avgScore,
+            COUNT(*) as chatCount
+        FROM chat_history
+        WHERE create_time &gt;= #{startTime}
+          AND create_time &lt; #{endTime}
+          AND emotion IS NOT NULL
+        GROUP BY DATE(create_time)
+        ORDER BY statDate ASC
+    </select>
+
+    <select id="selectEmotionStats" resultType="java.util.Map">
+        SELECT
+            emotion,
+            COUNT(*) as count
+        FROM chat_history
+        WHERE create_time &gt;= #{startTime} AND create_time &lt; #{endTime}
+          AND emotion IS NOT NULL
+        GROUP BY emotion
+    </select>
+
+</mapper>

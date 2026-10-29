@@ -1,0 +1,148 @@
+app:
+  weather:
+    api-key: ${guide.weather.api-key}
+  auth:
+    token-secret: ${guide.auth.token-secret}
+    admin-token-secret: ${guide.auth.admin-token-secret}
+    token-expire-seconds: ${guide.auth.token-expire-seconds}
+    worker-id: ${guide.auth.worker-id}
+    datacenter-id: ${guide.auth.datacenter-id}
+  wechat:
+    appid: ${guide.wechat.appid}
+    secret: ${guide.wechat.secret}
+  dashscope:
+    api-key: ${guide.ai.openai.api-key}
+    model: qwen3-vl-plus
+  alioss:
+    endpoint: ${guide.alioss.endpoint}
+    access-key-id: ${guide.alioss.access-key-id}
+    access-key-secret: ${guide.alioss.access-key-secret}
+    bucket-name: ${guide.alioss.bucket-name}
+  aliyun:
+    access-key-id: ${guide.aliyun.access-key-id}
+    access-key-secret: ${guide.aliyun.access-key-secret}
+    app-key: ${guide.aliyun.app-key}
+    region-id: ${guide.aliyun.region-id}
+  avatar:
+    api-key: ${guide.avatar.api-key}
+    api-secret: ${guide.avatar.api-secret}
+    app-id: ${guide.avatar.app-id}
+    scene-id: ${guide.avatar.scene-id}
+
+
+
+spring:
+  profiles:
+    active: dev
+
+  application:
+    name: agent-scenic-guide-backend
+
+  # MySQL
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/tour_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowMultiQueries=true}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:123456}
+
+  # Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: 0
+      timeout: 10s
+
+  # Spring AI OpenAI
+  ai:
+    openai:
+      api-key: ${guide.ai.openai.api-key}
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.2
+          max-tokens: 4000      # 增加最大token数
+          timeout: 120s         # 超时时间 120 秒（2分钟）
+          connection-timeout: 60s  # 连接超时 60 秒
+          read-timeout: 120s       # 读取超时 120 秒（2分钟）
+        retry:
+          max-attempts: 1       # 重试次数
+          backoff:
+            initial-interval: 5000ms # 初始重试间隔 5秒
+            multiplier: 2.0         # 每次重试间隔翻倍
+            max-interval: 30000ms   # 最大重试间隔 30 秒
+      embedding:
+        options:
+          model: text-embedding-v3
+          dimensions: 1024
+    vectorstore:
+      pgvector:
+        enabled: true
+        host: ${PGVECTOR_HOST:localhost}
+        port: ${PGVECTOR_PORT:5432}
+        database: ${PGVECTOR_DATABASE:scenic_guide_vector}
+        username: ${PGVECTOR_USERNAME:postgres}
+        password: ${PGVECTOR_PASSWORD:postgres}
+        schema: public
+        table: ai_vector_store
+
+
+
+# MyBatis-Plus
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.cmyhyq.pojo.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+
+# 服务配置
+server:
+  port: 8080
+  address: 0.0.0.0
+  # 核心：延长 Tomcat WebSocket 超时时间（默认 60s 太短）
+  servlet:
+    session:
+      timeout: 30m
+  tomcat:
+    connection-timeout: 300000  # HTTP 连接超时 5 分钟
+    keep-alive-timeout: 300000  # 保持连接 5 分钟
+
+
+
+
+# ============================================================
+# 环境变量注入（本地开发可直接改这里；容器部署见 deploy/.env.example）
+# ============================================================
+guide:
+  weather:
+    api-key: ${WEATHER_API_KEY:}
+  auth:
+    token-secret: ${AUTH_TOKEN_SECRET:dev-only-secret-change-me-32-bytes!}
+    admin-token-secret: ${ADMIN_TOKEN_SECRET:dev-only-admin-secret-change-me-32b}
+    token-expire-seconds: ${AUTH_TOKEN_EXPIRE_SECONDS:604800}
+    worker-id: ${AUTH_WORKER_ID:1}
+    datacenter-id: ${AUTH_DATACENTER_ID:1}
+  wechat:
+    appid: ${WECHAT_APPID:}
+    secret: ${WECHAT_SECRET:}
+  alioss:
+    endpoint: ${ALIOSS_ENDPOINT:}
+    access-key-id: ${ALIOSS_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIOSS_ACCESS_KEY_SECRET:}
+    bucket-name: ${ALIOSS_BUCKET_NAME:}
+  aliyun:
+    access-key-id: ${ALIYUN_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIYUN_ACCESS_KEY_SECRET:}
+    app-key: ${ALIYUN_NLS_APP_KEY:}
+    region-id: ${ALIYUN_REGION_ID:cn-shanghai}
+  avatar:
+    api-key: ${XFYUN_AVATAR_API_KEY:}
+    api-secret: ${XFYUN_AVATAR_API_SECRET:}
+    app-id: ${XFYUN_AVATAR_APP_ID:}
+    scene-id: ${XFYUN_AVATAR_SCENE_ID:}
+  ai:
+    openai:
+      api-key: ${DASHSCOPE_API_KEY:sk-placeholder}

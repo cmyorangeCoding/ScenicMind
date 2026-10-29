@@ -1,0 +1,30 @@
+# ---------- 依赖 / 构建产物 ----------
+node_modules/
+dist/
+dist-ssr/
+unpackage/
+backend/target/
+*.class
+*.jar
+!backend/.mvn/wrapper/maven-wrapper.jar
+
+# ---------- 编辑器 ----------
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# ---------- 本地配置（严禁提交） ----------
+.env
+.env.local
+*.local
+application-local.yml
+application-local.yaml
+application-dev-local.yml
+
+# ---------- 日志 / 系统 ----------
+logs/
+*.log
+.DS_Store
+Thumbs.db

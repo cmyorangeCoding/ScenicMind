@@ -1,0 +1,31 @@
+{
+  "name": "xf-avatar",
+  "id": "com.xfyun.avatar",
+  "version": "1.0.0",
+  "description": "讯飞数字人原生插件",
+  "author": "讯飞",
+  "platforms": ["Android"],
+  "android": {
+    "plugins": [
+      {
+        "type": "module",
+        "name": "XfAvatarModule",
+        "class": "com.xfyun.avatar.XfAvatarModule"
+      }
+    ],
+    "libs": [
+      "android/libs/*.aar"
+    ],
+    "permissions": [
+      "android.permission.INTERNET",
+      "android.permission.READ_PHONE_STATE",
+      "android.permission.WRITE_EXTERNAL_STORAGE",
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.RECORD_AUDIO",
+      "android.permission.ACCESS_NETWORK_STATE",
+      "android.permission.ACCESS_WIFI_STATE"
+    ],
+    "minSdkVersion": 24,
+    "targetSdkVersion": 33
+  }
+}

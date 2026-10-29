@@ -1,0 +1,1227 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>讯飞数字人 Web API</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+        pointer-events: auto; /* 允许点击事件 */
+      }
+
+      #avatarContainer {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        position: relative;
+        border-radius: 8px;
+        overflow: hidden;
+        pointer-events: auto; /* 允许点击事件 */
+      }
+
+      #canvas {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        background: rgba(0, 0, 0, 0.5);
+        pointer-events: none; /* 让点击事件穿透到父容器 */
+      }
+
+      #playerWrapper {
+        width: 100%;
+        height: 140%; /* 增大高度用于裁剪 */
+        position: absolute;
+        top: -41%; /* 上移，裁剪掉下半部分，只显示上半身 */
+        left: 25%;
+        display: none;
+        border-radius: 8px;
+        background-color: transparent;
+        pointer-events: none; /* 让点击事件穿透到父容器 */
+      }
+
+      .loading {
+        display: none !important; /* 隐藏加载动画 */
+      }
+      .loading-icon {
+        display: none !important; /* 隐藏加载图标 */
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .status-bar {
+        display: none !important; /* 隐藏状态条 */
+      }
+      .status-online {
+        color: #44ff44;
+      }
+      .status-offline {
+        color: #ff4444;
+      }
+      .status-connecting {
+        color: #ffaa00;
+      }
+      .status-reconnecting {
+        color: #ffaa00;
+        animation: blink 1s infinite;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="status-bar">
+      <span>讯飞数字人</span>
+      <span id="connectionStatus" class="status-offline">未连接</span>
+    </div>
+
+    <div id="avatarContainer">
+      <div class="loading" id="loading">
+        <div class="loading-icon"></div>
+        <div id="loadingText">连接服务器...</div>
+      </div>
+      <canvas id="canvas"></canvas>
+      <div id="playerWrapper"></div>
+    </div>
+
+    <script>
+      // 日志系统 - 只打印到控制台
+      const LOG_LEVEL = { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 };
+      const CURRENT_LOG_LEVEL = LOG_LEVEL.DEBUG;
+
+      function addLog(message, level = LOG_LEVEL.INFO) {
+        if (level > CURRENT_LOG_LEVEL) return;
+
+        const timestamp = new Date().toLocaleTimeString("zh-CN", {
+          hour12: false,
+        });
+        let prefix = "[INFO]";
+
+        switch (level) {
+          case LOG_LEVEL.ERROR:
+            prefix = "[ERROR]";
+            console.error(`[数字人][${timestamp}] ${prefix} ${message}`);
+            return;
+          case LOG_LEVEL.WARN:
+            prefix = "[WARN]";
+            console.warn(`[数字人][${timestamp}] ${prefix} ${message}`);
+            return;
+          case LOG_LEVEL.DEBUG:
+            prefix = "[DEBUG]";
+            console.debug(`[数字人][${timestamp}] ${prefix} ${message}`);
+            return;
+          case 4:
+            prefix = "[SUCCESS]";
+            console.log(`[数字人][${timestamp}] ${prefix} ${message}`);
+            return;
+          default:
+            console.log(`[数字人][${timestamp}] ${prefix} ${message}`);
+        }
+      }
+
+      function updateConnectionStatus(status, statusClass) {
+        const statusEl = document.getElementById("connectionStatus");
+        statusEl.textContent = status;
+        statusEl.className = statusClass;
+        addLog(
+          `连接状态: ${status}`,
+          statusClass === "status-online" ? 4 : LOG_LEVEL.WARN,
+        );
+      }
+
+      // 配置信息（敏感字段从后端获取）
+      const config = {
+        appId: "",
+        apiKey: "",
+        apiSecret: "",
+        avatarId: "111034002",
+        sceneId: "",
+        vcn: "x5_lingyouyou_flow",
+        serverUrl: "wss://avatar.cn-huadong-1.xf-yun.com/v1/interact",
+        maxReconnectAttempts: 3,
+        reconnectDelay: 3000,
+      };
+
+      // 重新初始化数字人（供外部调用，切换形象时使用）
+      window.reinitAvatar = function () {
+        addLog("重新初始化数字人连接", LOG_LEVEL.INFO);
+        currentReconnectAttempt = 0;
+        connect().catch(function (err) {
+          addLog(`重新连接失败: ${err.message}`, LOG_LEVEL.ERROR);
+        });
+      };
+
+      // 接收来自 Native 的配置（简化版，避免evalJS复杂语法问题）
+      window.receiveConfigFromNative = function (newConfig) {
+        console.log("[数字人] 从Native接收配置:", newConfig);
+        window.setConfig(newConfig, false);
+      };
+
+      // Native调用的重新初始化（简化版）
+      window.nativeReinitAvatar = function () {
+        console.log("[数字人] Native调用重新初始化");
+        window.reinitAvatar();
+      };
+
+      // 延迟切换到半身模式（等待RTC就绪）
+      window.delayedSwitchToHalfBody = function () {
+        console.log("[数字人] 尝试切换到半身模式");
+        // 先检查播放器状态
+        checkAndResumePlayer();
+        // 切换到半身模式
+        window.switchToHalfBody();
+      };
+
+      // 检查播放器状态并尝试恢复
+      function checkAndResumePlayer() {
+        console.log("[数字人] 检查播放器状态");
+        if (window.rtcPlayer && window.rtcPlayer.resume) {
+          try {
+            window.rtcPlayer.resume();
+            console.log("[数字人] 播放器已恢复");
+          } catch (e) {
+            console.log("[数字人] 恢复播放器失败:", e.message);
+          }
+        }
+      }
+
+      // 动态更新配置（供外部调用）
+      let configReadyCallback = null;
+      window.setConfig = function (newConfig, autoConnect = true) {
+        console.log("[数字人] 动态更新配置:", newConfig);
+        if (newConfig.appId !== undefined) config.appId = newConfig.appId;
+        if (newConfig.apiKey !== undefined) config.apiKey = newConfig.apiKey;
+        if (newConfig.apiSecret !== undefined)
+          config.apiSecret = newConfig.apiSecret;
+        if (newConfig.sceneId !== undefined) config.sceneId = newConfig.sceneId;
+        if (newConfig.avatarId !== undefined)
+          config.avatarId = newConfig.avatarId;
+        if (newConfig.vcn !== undefined) config.vcn = newConfig.vcn;
+        // 更新 speed、pitch、volume 参数
+        if (newConfig.speed !== undefined) config.speed = newConfig.speed;
+        if (newConfig.pitch !== undefined) config.pitch = newConfig.pitch;
+        if (newConfig.volume !== undefined) config.volume = newConfig.volume;
+        // 更新 serverUrl（重要！签名时需要从正确的 serverUrl 提取 host）
+        if (newConfig.serverUrl !== undefined)
+          config.serverUrl = newConfig.serverUrl;
+
+        // 打印更新后的完整配置
+        console.log("[数字人] 更新后配置:", {
+          avatarId: config.avatarId,
+          vcn: config.vcn,
+          speed: config.speed,
+          pitch: config.pitch,
+          volume: config.volume,
+        });
+
+        // 检查是否所有必需配置都已就绪
+        if (
+          config.appId &&
+          config.apiKey &&
+          config.apiSecret &&
+          config.sceneId
+        ) {
+          console.log("[数字人] 配置已就绪，autoConnect:", autoConnect);
+          if (autoConnect) {
+            if (configReadyCallback) {
+              configReadyCallback();
+            } else {
+              // 直接开始连接
+              connect().catch((err) => {
+                console.error("[数字人] 连接失败:", err);
+              });
+            }
+          }
+        }
+      };
+
+      // 注册配置就绪回调（供外部控制连接时机）
+      window.onConfigReady = function (callback) {
+        configReadyCallback = callback;
+      };
+
+      // 获取当前配置
+      window.getConfig = function () {
+        return JSON.parse(JSON.stringify(config));
+      };
+
+      let ws = null;
+      let isConnected = false;
+      let sequenceId = 0;
+      let audioContext = null;
+      let audioBuffer = [];
+      let isSpeaking = false;
+      let reconnectTimer = null;
+      let currentReconnectAttempt = 0;
+      let pingTimer = null; // ping保活定时器
+
+      // 生成UUID
+      function generateUUID() {
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+          /[xy]/g,
+          function (c) {
+            const r = (Math.random() * 16) | 0;
+            const v = c === "x" ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+          },
+        );
+      }
+
+      // 生成认证头（按照讯飞官方文档）
+      async function generateAuthHeader() {
+        const url = new URL(config.serverUrl);
+        const host = url.host;
+        const path = url.pathname;
+
+        // 确保时间格式正确（RFC 1123）
+        const date = new Date().toUTCString();
+
+        // 调试：输出获取到的各个参数
+        addLog(`[签名调试] serverUrl: ${config.serverUrl}`, LOG_LEVEL.DEBUG);
+        addLog(
+          `[签名调试] host: "${host}" (长度: ${host.length})`,
+          LOG_LEVEL.DEBUG,
+        );
+        addLog(
+          `[签名调试] path: "${path}" (长度: ${path.length})`,
+          LOG_LEVEL.DEBUG,
+        );
+        addLog(
+          `[签名调试] date: "${date}" (长度: ${date.length})`,
+          LOG_LEVEL.DEBUG,
+        );
+
+        // 签名原文必须严格按照这个格式
+        // 格式：host: {host}\ndate: {date}\nGET {path} HTTP/1.1
+        // 注意：必须使用LF换行(\n)，不能有多余空格，最后一行没有换行
+        const signatureOrigin = [
+          "host: " + host,
+          "date: " + date,
+          "GET " + path + " HTTP/1.1",
+        ].join("\n");
+
+        // 验证签名原文格式
+        addLog(`签名原文长度: ${signatureOrigin.length}`, LOG_LEVEL.DEBUG);
+        // 检查每行的格式
+        const lines = signatureOrigin.split("\n");
+        addLog(`签名原文行数: ${lines.length}`, LOG_LEVEL.DEBUG);
+        lines.forEach((line, index) => {
+          addLog(
+            `行${index + 1}: "${line}" (长度: ${line.length})`,
+            LOG_LEVEL.DEBUG,
+          );
+        });
+
+        let signature = "";
+
+        // 使用CryptoJS生成签名（确保与服务器端算法一致）
+        try {
+          // 确保签名原文和密钥都是UTF-8编码
+          const utf8Origin = CryptoJS.enc.Utf8.parse(signatureOrigin);
+          const utf8Secret = CryptoJS.enc.Utf8.parse(config.apiSecret);
+
+          // 使用HMAC-SHA256签名
+          const hmac = CryptoJS.HmacSHA256(utf8Origin, utf8Secret);
+          signature = CryptoJS.enc.Base64.stringify(hmac);
+          addLog("使用CryptoJS生成签名", LOG_LEVEL.DEBUG);
+
+          // 验证签名
+          addLog(`签名原文UTF-8长度: ${utf8Origin.sigBytes}`, LOG_LEVEL.DEBUG);
+          addLog(`密钥UTF-8长度: ${utf8Secret.sigBytes}`, LOG_LEVEL.DEBUG);
+        } catch (e) {
+          addLog(`签名生成失败: ${e.message}`, LOG_LEVEL.ERROR);
+        }
+
+        // 验证签名长度
+        if (signature) {
+          addLog(`签名长度: ${signature.length}`, LOG_LEVEL.DEBUG);
+        }
+
+        // 构建Authorization头（讯飞标准格式）
+        // 注意：逗号后面不能有空格！
+        const authorizationOrigin = `api_key="${config.apiKey}",algorithm="hmac-sha256",headers="host date request-line",signature="${signature}"`;
+
+        // 对authorization进行base64编码
+        const authorization = btoa(authorizationOrigin);
+        addLog(`authorization原始值: ${authorizationOrigin}`, LOG_LEVEL.DEBUG);
+        addLog(`authorization Base64编码后: ${authorization}`, LOG_LEVEL.DEBUG);
+
+        addLog(`生成认证头: date=${date}`, LOG_LEVEL.DEBUG);
+        addLog(`签名原文: "${signatureOrigin}"`, LOG_LEVEL.DEBUG);
+        addLog(`签名结果: ${signature}`, LOG_LEVEL.DEBUG);
+        addLog(`Authorization: ${authorization}`, LOG_LEVEL.DEBUG);
+
+        return { authorization, date, host };
+      }
+
+      // 创建WebSocket连接
+      async function createWebSocketWithAuth() {
+        const { authorization, date, host } = await generateAuthHeader();
+        const url = new URL(config.serverUrl);
+
+        // 构建带参数的URL（URL.searchParams.set会自动编码，不需要手动encode）
+        // 注意：讯飞WebSocket API要求将认证信息放在URL参数中
+        url.searchParams.set("authorization", authorization);
+        url.searchParams.set("date", date);
+        url.searchParams.set("host", host);
+
+        const finalUrl = url.href;
+        addLog(`最终连接URL: ${finalUrl}`, LOG_LEVEL.DEBUG);
+
+        return finalUrl;
+      }
+
+      async function connect() {
+        // 如果有旧连接，等待它完全关闭
+        if (ws && ws.readyState !== WebSocket.CLOSED) {
+          addLog("WebSocket已存在，先关闭旧连接", LOG_LEVEL.WARN);
+          await new Promise((resolve) => {
+            ws.onclose = function () {
+              addLog("旧连接已关闭", LOG_LEVEL.DEBUG);
+              resolve();
+            };
+            ws.close();
+          });
+        }
+
+        addLog("=== 开始连接讯飞数字人服务器 ===", LOG_LEVEL.INFO);
+        addLog(
+          `配置信息: appId=${config.appId}, avatarId=${config.avatarId}`,
+          LOG_LEVEL.DEBUG,
+        );
+
+        const wsUrl = await createWebSocketWithAuth();
+        addLog(`连接地址: ${wsUrl.substring(0, 80)}...`, LOG_LEVEL.DEBUG);
+
+        updateConnectionStatus("连接中...", "status-connecting");
+        document.getElementById("loadingText").textContent = "连接服务器...";
+
+        ws = new WebSocket(wsUrl);
+        ws.binaryType = "arraybuffer";
+
+        ws.onopen = function () {
+          addLog("WebSocket连接成功", 4);
+          isConnected = true;
+          currentReconnectAttempt = 0;
+          updateConnectionStatus("已连接", "status-online");
+
+          // 启动 ping 保活定时器
+          startPingTimer();
+
+          initAvatar();
+        };
+
+        ws.onmessage = function (event) {
+          handleMessage(event.data);
+        };
+
+        ws.onerror = function (event) {
+          const errMsg = event.message || "未知错误";
+          addLog(`WebSocket错误: ${errMsg}`, LOG_LEVEL.ERROR);
+        };
+
+        ws.onclose = function (event) {
+          addLog(
+            `WebSocket关闭: 代码=${event.code}, 原因=${event.reason || "未知"}`,
+            event.code === 1000 ? LOG_LEVEL.INFO : LOG_LEVEL.ERROR,
+          );
+
+          isConnected = false;
+          isSpeaking = false;
+
+          // 停止 ping 保活定时器
+          stopPingTimer();
+
+          if (
+            event.code !== 1000 &&
+            currentReconnectAttempt < config.maxReconnectAttempts
+          ) {
+            scheduleReconnect();
+          } else {
+            updateConnectionStatus("已断开", "status-offline");
+            document.getElementById("loadingText").textContent = "连接已断开";
+          }
+        };
+      }
+
+      function scheduleReconnect() {
+        currentReconnectAttempt++;
+        const delay = config.reconnectDelay * currentReconnectAttempt;
+
+        addLog(
+          `准备重连 [${currentReconnectAttempt}/${config.maxReconnectAttempts}]，延迟 ${delay}ms`,
+          LOG_LEVEL.WARN,
+        );
+        updateConnectionStatus(
+          `重连中...(${currentReconnectAttempt})`,
+          "status-reconnecting",
+        );
+        document.getElementById("loadingText").textContent =
+          `重连中...(${currentReconnectAttempt})`;
+
+        reconnectTimer = setTimeout(() => {
+          addLog(`执行重连尝试 ${currentReconnectAttempt}`, LOG_LEVEL.INFO);
+          connect().catch(function (err) {
+            addLog(`重连失败: ${err.message}`, LOG_LEVEL.ERROR);
+          });
+        }, delay);
+      }
+
+      function initAvatar() {
+        addLog("初始化数字人形象", LOG_LEVEL.INFO);
+        document.getElementById("loadingText").textContent = "初始化数字人...";
+
+        // 打印当前初始化配置
+        const initConfig = {
+          avatarId: config.avatarId,
+          vcn: config.vcn || "x5_lingyouyou_flow_flow",
+          speed: config.speed || 54,
+          pitch: config.pitch || 55,
+          volume: config.volume || 59,
+        };
+        addLog(
+          `[初始化] 数字人配置: ${JSON.stringify(initConfig)}`,
+          LOG_LEVEL.INFO,
+        );
+
+        const data = {
+          header: {
+            app_id: config.appId,
+            request_id: generateUUID(),
+            ctrl: "start",
+            scene_id: config.sceneId || "", // 需要从交互平台获取
+          },
+          parameter: {
+            avatar: {
+              stream: {
+                protocol: "xrtc",
+                fps: 25,
+                bitrate: 500,
+                alpha: 1,
+              },
+              avatar_id: config.avatarId,
+              move_h: 0, //[-4096, +4096] //（非必传）主播平移像素距离，控制主播中心位置距离合成图像中心位置水平距离，为负数表示向左平移，为正数表示向右平移
+              move_v: -350, // [-4096, +4096]，//（非必传）控制主播在展示画面中的上下移动距离，0为默认情况，主播在画面中下贴边位置。该值为负数表示向下移动（显示上半身），为正数表示向上移动
+              scale: 1, //（非必传）形象缩放比例，取值范围0.1-1.0
+              width: 512, // 与播放器videoSize一致
+              height: 1024, // 与播放器videoSize一致
+            },
+            tts: {
+              vcn: config.vcn || "x5_lingyouyou_flow_flow",
+              speed: config.speed || 54,
+              pitch: config.pitch || 55,
+              volume: config.volume || 59,
+              tts: {
+                encoding: "raw",
+                sample_rate: 16000,
+                channels: 1,
+                bit_depth: 16,
+              },
+            },
+          },
+          payload: {},
+        };
+
+        sendMessage(data);
+      }
+
+      function sendText(text) {
+        if (!isConnected || !text.trim()) return;
+
+        addLog(
+          `发送文本: "${text.substring(0, 30)}${text.length > 30 ? "..." : ""}"`,
+          LOG_LEVEL.INFO,
+        );
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("canvas").style.display = "block";
+
+        const data = {
+          header: {
+            app_id: config.appId,
+            request_id: generateUUID(),
+            status: 2,
+            sequence_id: ++sequenceId,
+          },
+          parameter: { avatar: { avatar_id: config.avatarId } },
+          payload: { status: "text", data: btoa(encodeURIComponent(text)) },
+        };
+
+        sendMessage(data);
+        isSpeaking = true;
+      }
+
+      // 重置虚拟人（恢复静默推流状态，不断开连接）
+      function resetAvatar() {
+        addLog("重置虚拟人（静默状态）", LOG_LEVEL.INFO);
+
+        const data = {
+          header: {
+            app_id: config.appId,
+            ctrl: "reset", // reset恢复虚拟人为静默推流状态
+            request_id: generateUUID(),
+          },
+        };
+
+        sendMessage(data);
+        isSpeaking = false;
+      }
+
+      // 发送 ping 消息（保活）
+      function sendPing() {
+        if (!isConnected) return;
+
+        const data = {
+          header: {
+            app_id: config.appId,
+            ctrl: "ping",
+            request_id: generateUUID(),
+          },
+        };
+
+        addLog("发送 ping 保活消息", LOG_LEVEL.DEBUG);
+        sendMessage(data);
+      }
+
+      // 启动 ping 保活定时器（每10秒发送一次）
+      function startPingTimer() {
+        if (pingTimer) {
+          clearInterval(pingTimer);
+        }
+        // 每10秒发送一次ping（建议值，可根据需要调整）
+        pingTimer = setInterval(sendPing, 10000);
+        addLog("启动 ping 保活定时器", LOG_LEVEL.DEBUG);
+      }
+
+      // 停止 ping 保活定时器
+      function stopPingTimer() {
+        if (pingTimer) {
+          clearInterval(pingTimer);
+          pingTimer = null;
+          addLog("停止 ping 保活定时器", LOG_LEVEL.DEBUG);
+        }
+      }
+
+      function sendMessage(data) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const jsonStr = JSON.stringify(data);
+          addLog(
+            `发送消息: ${jsonStr.substring(0, 80)}${jsonStr.length > 80 ? "..." : ""}`,
+            LOG_LEVEL.DEBUG,
+          );
+          ws.send(jsonStr);
+        } else {
+          addLog("WebSocket未连接，消息发送失败", LOG_LEVEL.WARN);
+        }
+      }
+
+      // 发送文本驱动消息（text_driver协议）
+      function sendTextInteract(text) {
+        if (!isConnected || !text.trim()) {
+          addLog("WebSocket未连接或文本为空，无法发送消息", LOG_LEVEL.WARN);
+          return false;
+        }
+
+        // 记录当前使用的TTS配置参数
+        const currentTtsConfig = {
+          vcn: config.vcn || "x5_lingyouyou_flow_flow",
+          speed: config.speed || 54,
+          pitch: config.pitch || 55,
+          volume: config.volume || 59,
+        };
+        addLog(
+          `[驱动] 当前TTS配置: ${JSON.stringify(currentTtsConfig)}`,
+          LOG_LEVEL.INFO,
+        );
+
+        addLog(
+          `[驱动] 发送文本: "${text.substring(0, 30)}${text.length > 30 ? "..." : ""}"`,
+          LOG_LEVEL.INFO,
+        );
+
+        const data = {
+          header: {
+            app_id: config.appId,
+            ctrl: "text_driver",
+            request_id: generateUUID(),
+            sequence_id: ++sequenceId,
+          },
+          parameter: {
+            avatar_dispatch: {
+              interactive_mode: 0, // 0=追加模式，等待当前播报完毕后再播报
+            },
+            tts: {
+              vcn: config.vcn || "x5_lingyouyou_flow_flow",
+              speed: config.speed || 54,
+              pitch: config.pitch || 55,
+              volume: config.volume || 59,
+            },
+            air: {
+              air: 1, // 开启自动动作，使表情更自然
+              add_nonsemantic: 1, // 开启无指向性动作
+            },
+          },
+          payload: {
+            text: {
+              content: text,
+            },
+          },
+        };
+
+        sendMessage(data);
+        addLog("[驱动] 消息已发送，等待响应...", LOG_LEVEL.INFO);
+        isSpeaking = true; // 标记正在播报
+        return true;
+      }
+
+      function handleMessage(data) {
+        if (data instanceof ArrayBuffer) {
+          processBinaryMessage(data);
+        } else {
+          try {
+            const json = JSON.parse(data);
+            processJsonMessage(json);
+          } catch (e) {
+            addLog(`无法解析消息: ${data}`, LOG_LEVEL.ERROR);
+          }
+        }
+      }
+
+      // xrtc播放器实例（全局变量，供外部函数访问）
+      window.rtcPlayer = null;
+
+      // 播放器事件枚举
+      const PlayerEvents = {
+        play: "play",
+        waiting: "waiting",
+        playing: "playing",
+        playNotAllowed: "not-allowed",
+        stop: "stop",
+        error: "error",
+      };
+
+      // xrtc连接拉流
+      async function connectWebRTC(streamUrl, streamExtend) {
+        addLog("开始连接xrtc拉流", LOG_LEVEL.INFO);
+
+        try {
+          // 动态导入播放器SDK
+          const { RTCPlayer } = await import("./rtcplayer/rtcplayer.esm.js");
+
+          // 创建播放器实例
+          window.rtcPlayer = new RTCPlayer();
+          addLog("创建RTCPlayer实例成功", LOG_LEVEL.DEBUG);
+
+          // 绑定播放器事件
+          rtcPlayer
+            .on(PlayerEvents.play, () => {
+              addLog("播放器开始播放", LOG_LEVEL.INFO);
+            })
+            .on(PlayerEvents.waiting, () => {
+              addLog("播放器等待中", LOG_LEVEL.WARN);
+            })
+            .on(PlayerEvents.playing, () => {
+              addLog("播放器播放中", LOG_LEVEL.INFO);
+              document.getElementById("loading").style.display = "none";
+              document.getElementById("canvas").style.display = "none";
+            })
+            .on(PlayerEvents.playNotAllowed, () => {
+              addLog("播放器播放被阻止，需要用户交互", LOG_LEVEL.WARN);
+              // 引导用户点击屏幕恢复播放
+              document.addEventListener("click", handleUserInteraction, {
+                once: true,
+              });
+            })
+            .on(PlayerEvents.stop, () => {
+              addLog("播放器停止播放", LOG_LEVEL.INFO);
+            })
+            .on(PlayerEvents.error, (err) => {
+              addLog(`播放器错误: ${err}`, LOG_LEVEL.ERROR);
+            });
+
+          // 解析streamUrl获取roomId
+          // streamUrl格式: xrtcs://xrtc-cn-east-2.xf-yun.com/ase0001015chu18f70f9df240442402
+          const urlParts = streamUrl.split("/");
+          const roomId = urlParts[urlParts.length - 1];
+
+          // 构建流信息
+          const streamInfo = {
+            sid: streamUrl, // 使用完整的拉流地址作为sid
+            server: "https://" + urlParts[2], // 域名部分，需要添加 https://
+            auth: streamExtend?.user_sign || "",
+            appid: streamExtend?.appid || "",
+            timeStr: new Date().toISOString(),
+            userId: generateUUID(),
+            roomId: roomId,
+          };
+
+          addLog(`流信息: ${JSON.stringify(streamInfo)}`, LOG_LEVEL.DEBUG);
+
+          // 设置播放器父节点（必须在videoSize之前设置）
+          const playerWrapper = document.getElementById("playerWrapper");
+          playerWrapper.style.display = "block";
+          rtcPlayer.container = playerWrapper;
+          addLog("设置播放器容器成功", LOG_LEVEL.DEBUG);
+          addLog(
+            `播放器容器大小: ${playerWrapper.offsetWidth}x${playerWrapper.offsetHeight}`,
+            LOG_LEVEL.DEBUG,
+          );
+
+          // 设置视频大小（使用2的幂次方，避免WebGL纹理渲染问题）
+          rtcPlayer.videoSize = { width: 1024, height: 2048 };
+          addLog("设置视频大小成功", LOG_LEVEL.DEBUG);
+
+          // 设置播放流信息
+          rtcPlayer.stream = streamInfo;
+          addLog("设置播放流信息成功", LOG_LEVEL.DEBUG);
+
+          // 开始播放
+          await rtcPlayer.play();
+          addLog("调用播放器play()成功", LOG_LEVEL.INFO);
+        } catch (error) {
+          addLog(`xrtc播放器初始化失败: ${error.message}`, LOG_LEVEL.ERROR);
+          document.getElementById("loadingText").textContent =
+            `播放器初始化失败: ${error.message}`;
+        }
+      }
+
+      // 用户交互处理（用于恢复播放）
+      function handleUserInteraction() {
+        if (rtcPlayer) {
+          addLog("用户交互，恢复播放", LOG_LEVEL.INFO);
+          rtcPlayer.resume();
+        }
+      }
+
+      function processJsonMessage(json) {
+        addLog(
+          `收到JSON消息: ${JSON.stringify(json).substring(0, 100)}...`,
+          LOG_LEVEL.DEBUG,
+        );
+
+        if (json.header && json.header.code !== 0) {
+          addLog(
+            `服务端错误: 代码=${json.header.code}, 消息=${json.header.message || "未知"}`,
+            LOG_LEVEL.ERROR,
+          );
+          document.getElementById("loadingText").textContent =
+            `错误: ${json.header.message || "连接失败"}`;
+          return;
+        }
+
+        // 处理stream_info事件（获取拉流地址）
+        if (
+          json.payload &&
+          json.payload.avatar &&
+          json.payload.avatar.event_type === "stream_info"
+        ) {
+          const streamUrl = json.payload.avatar.stream_url;
+          const streamExtend = json.payload.avatar.stream_extend;
+
+          addLog(`收到拉流地址: ${streamUrl}`, LOG_LEVEL.INFO);
+          addLog(
+            `拉流扩展参数: ${JSON.stringify(streamExtend)}`,
+            LOG_LEVEL.DEBUG,
+          );
+
+          // 使用WebRTC连接拉流
+          connectWebRTC(streamUrl, streamExtend);
+          return;
+        }
+
+        if (json.payload && json.payload.status === "ready") {
+          addLog("数字人准备就绪", 4);
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("canvas").style.display = "block";
+          notifyUniApp({ type: "ready" });
+        }
+
+        if (json.payload && json.payload.status === "end") {
+          addLog("播报结束", 4);
+          isSpeaking = false;
+          notifyUniApp({ type: "speakEnd" });
+        }
+
+        // 处理 pong 响应（ping保活的回应）
+        if (
+          json.payload &&
+          json.payload.avatar &&
+          json.payload.avatar.event_type === "pong"
+        ) {
+          addLog("收到 pong 响应", LOG_LEVEL.DEBUG);
+        }
+
+        // 处理 driver_status 事件（文本驱动状态）
+        if (
+          json.payload &&
+          json.payload.avatar &&
+          json.payload.avatar.event_type === "driver_status"
+        ) {
+          const status = json.payload.avatar.vmr_status;
+          addLog(`收到 driver_status: ${status}`, LOG_LEVEL.INFO);
+
+          // vmr_status: 0=空闲, 1=播放中, 2=播放结束
+          if (status === 2) {
+            addLog("播报完成 (driver_status)", 4);
+            isSpeaking = false;
+            notifyUniApp({ type: "speakEnd" });
+          }
+        }
+
+        // 处理 tts_duration 事件（TTS时长信息）
+        if (
+          json.payload &&
+          json.payload.avatar &&
+          json.payload.avatar.event_type === "tts_duration"
+        ) {
+          const duration = json.payload.avatar.tts_duration;
+          const frameNum = json.payload.avatar.frame_num;
+          addLog(
+            `收到 tts_duration: 时长=${duration}ms, 帧号=${frameNum}`,
+            LOG_LEVEL.DEBUG,
+          );
+        }
+
+        // 处理 action_status 事件（动作状态）
+        if (
+          json.payload &&
+          json.payload.avatar &&
+          json.payload.avatar.event_type === "action_status"
+        ) {
+          addLog("收到 action_status", LOG_LEVEL.DEBUG);
+        }
+
+        // 处理 stream_start 事件（流开始）
+        if (
+          json.payload &&
+          json.payload.avatar &&
+          json.payload.avatar.event_type === "stream_start"
+        ) {
+          addLog("收到 stream_start", LOG_LEVEL.DEBUG);
+        }
+
+        // 处理 reset 事件（虚拟人重置）
+        if (
+          json.payload &&
+          json.payload.avatar &&
+          json.payload.avatar.event_type === "reset"
+        ) {
+          addLog("虚拟人已重置为静默状态", LOG_LEVEL.INFO);
+          isSpeaking = false;
+          notifyUniApp({ type: "resetComplete" });
+        }
+      }
+
+      function processBinaryMessage(data) {
+        const buffer = new Uint8Array(data);
+
+        if (buffer.length > 0) {
+          if (buffer[0] === 0x00) {
+            processVideoFrame(buffer.slice(1));
+          } else if (buffer[0] === 0x01) {
+            processAudioFrame(buffer.slice(1));
+          } else {
+            addLog(`未知消息类型: 0x${buffer[0].toString(16)}`, LOG_LEVEL.WARN);
+          }
+        }
+      }
+
+      function processVideoFrame(data) {
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        try {
+          const blob = new Blob([data], { type: "video/webm; codecs=vp8" });
+          const url = URL.createObjectURL(blob);
+
+          const video = document.createElement("video");
+          video.onloadeddata = function () {
+            canvas.width = video.videoWidth || 720;
+            canvas.height = video.videoHeight || 1280;
+            ctx.drawImage(video, 0, 0);
+            URL.revokeObjectURL(url);
+          };
+          video.onerror = function () {
+            addLog("视频帧解码失败", LOG_LEVEL.WARN);
+            URL.revokeObjectURL(url);
+          };
+          video.src = url;
+        } catch (e) {
+          addLog(`视频帧处理错误: ${e.message}`, LOG_LEVEL.ERROR);
+        }
+      }
+
+      function processAudioFrame(data) {
+        if (!audioContext) {
+          audioContext = new (
+            window.AudioContext || window.webkitAudioContext
+          )();
+          addLog(
+            `AudioContext采样率: ${audioContext.sampleRate}`,
+            LOG_LEVEL.DEBUG,
+          );
+        }
+
+        // 确保数据是16位对齐的
+        if (data.byteLength % 2 !== 0) {
+          addLog(
+            `警告: 音频数据长度不是偶数 (${data.byteLength})`,
+            LOG_LEVEL.WARN,
+          );
+        }
+
+        // 将Uint8Array转换为Int16Array
+        const int16Array = new Int16Array(
+          data.buffer,
+          data.byteOffset,
+          Math.floor(data.byteLength / 2),
+        );
+        audioBuffer.push(...int16Array);
+
+        // 每300ms或积累足够的音频数据后播放
+        if (audioBuffer.length >= audioContext.sampleRate * 0.3) {
+          playAudio();
+        }
+      }
+
+      function playAudio() {
+        try {
+          if (audioBuffer.length === 0) return;
+
+          const buffer = audioContext.createBuffer(
+            1,
+            audioBuffer.length,
+            audioContext.sampleRate,
+          );
+          const channelData = buffer.getChannelData(0);
+
+          // 将Int16转换为Float32（归一化到-1到1之间）
+          for (let i = 0; i < audioBuffer.length; i++) {
+            const sample = audioBuffer[i];
+            // 限制范围，防止爆音
+            channelData[i] = Math.max(-1, Math.min(1, sample / 32768));
+          }
+
+          const source = audioContext.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioContext.destination);
+          source.start();
+
+          addLog(`播放音频帧: ${audioBuffer.length} 样本`, LOG_LEVEL.DEBUG);
+          audioBuffer = [];
+        } catch (e) {
+          addLog(`音频播放错误: ${e.message}`, LOG_LEVEL.WARN);
+          audioBuffer = [];
+        }
+      }
+
+      function notifyUniApp(data) {
+        addLog(`通知UniApp: ${JSON.stringify(data)}`, LOG_LEVEL.DEBUG);
+
+        if (window.parent !== window) {
+          window.parent.postMessage(data, "*");
+        } else if (
+          window.webkit &&
+          window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.postMessage
+        ) {
+          window.webkit.messageHandlers.postMessage.postMessage(data);
+        } else if (
+          window.Android &&
+          typeof window.Android.postMessage === "function"
+        ) {
+          window.Android.postMessage(JSON.stringify(data));
+        }
+      }
+
+      window.addEventListener("load", function () {
+        addLog("页面加载完成，开始初始化...", 4);
+        addLog(
+          `窗口尺寸: ${window.innerWidth}x${window.innerHeight}`,
+          LOG_LEVEL.DEBUG,
+        );
+        addLog(
+          `document.documentElement尺寸: ${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`,
+          LOG_LEVEL.DEBUG,
+        );
+        addLog(
+          `body尺寸: ${document.body.clientWidth}x${document.body.clientHeight}`,
+          LOG_LEVEL.DEBUG,
+        );
+        addLog(
+          `avatarContainer尺寸: ${document.getElementById("avatarContainer").offsetWidth}x${document.getElementById("avatarContainer").offsetHeight}`,
+          LOG_LEVEL.DEBUG,
+        );
+
+        if (!window.WebSocket) {
+          addLog("错误: 当前浏览器不支持WebSocket", LOG_LEVEL.ERROR);
+          document.getElementById("loadingText").textContent =
+            "浏览器不支持WebSocket";
+          return;
+        }
+
+        if (!window.CryptoJS) {
+          addLog("错误: CryptoJS未加载", LOG_LEVEL.ERROR);
+          document.getElementById("loadingText").textContent = "加密库加载失败";
+          return;
+        }
+
+        addLog("浏览器兼容性检查通过，等待配置...", LOG_LEVEL.DEBUG);
+        addLog(
+          "页面已就绪，等待外部调用 setConfig() 设置配置后开始连接",
+          LOG_LEVEL.INFO,
+        );
+      });
+
+      window.addEventListener("message", function (event) {
+        addLog(`收到外部消息: ${JSON.stringify(event.data)}`, LOG_LEVEL.DEBUG);
+
+        if (event.data && event.data.type === "speak") {
+          sendText(event.data.text);
+        } else if (event.data && event.data.type === "reset") {
+          resetAvatar();
+        } else if (event.data && event.data.type === "interact") {
+          // 处理文本交互消息
+          const success = sendTextInteract(event.data.text);
+          if (success) {
+            addLog("[交互] 收到外部交互请求，文本已发送", LOG_LEVEL.INFO);
+          } else {
+            addLog("[交互] 发送交互消息失败", LOG_LEVEL.ERROR);
+          }
+        }
+      });
+
+      // 添加点击事件监听（精确点击数字人本体区域）
+      window.addEventListener("load", function () {
+        const avatarContainer = document.getElementById("avatarContainer");
+        if (avatarContainer) {
+          avatarContainer.addEventListener("click", function (e) {
+            // 获取容器尺寸和点击位置
+            const rect = avatarContainer.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            const containerWidth = rect.width;
+            const containerHeight = rect.height;
+
+            // 数字人本体区域（居中，约占容器的 70% 宽度和 80% 高度）
+            const avatarWidth = containerWidth * 0.7;
+            const avatarHeight = containerHeight * 0.8;
+            const avatarLeft = (containerWidth - avatarWidth) / 2;
+            const avatarTop = (containerHeight - avatarHeight) / 2;
+
+            // 判断点击是否在数字人本体区域内
+            const isClickOnAvatar =
+              clickX >= avatarLeft &&
+              clickX <= avatarLeft + avatarWidth &&
+              clickY >= avatarTop &&
+              clickY <= avatarTop + avatarHeight;
+
+            if (isClickOnAvatar) {
+              addLog("[点击] 点击数字人本体区域", LOG_LEVEL.INFO);
+
+              // 如果正在播报，点击则重置（停止播报）；否则开始播报
+              if (isSpeaking) {
+                addLog("[点击] 正在播报中，重置数字人", LOG_LEVEL.INFO);
+                resetAvatar();
+              } else {
+                const text =
+                  "欢迎游览灵山胜境！我是智能导览数字人。查景区知识请进景区知识页面，想获取个性化路线可以打开路线推荐，地图查看和路线规划使用智能伴游模块，有问题可在意见反馈提交，个人收藏、游玩记录等信息，在下方个人中心即可查看，祝您游玩舒心！";
+                sendTextInteract(text);
+              }
+            } else {
+              addLog("[点击] 点击空白区域，忽略", LOG_LEVEL.DEBUG);
+            }
+          });
+          addLog("[初始化] 点击事件监听已添加（精确模式）", LOG_LEVEL.DEBUG);
+        } else {
+          addLog("[错误] 未找到avatarContainer元素", LOG_LEVEL.ERROR);
+        }
+      });
+
+      // ========== 模式切换功能（半身/全身）==========
+      let currentMode = "halfBody"; // 'halfBody' | 'fullBody'
+
+      // 切换到全身模式 - 只修改CSS，不重新初始化
+      /*window.switchToFullBody = function () {
+        console.log("[数字人] 切换到全身模式");
+        currentMode = "fullBody";
+
+        const playerWrapper = document.getElementById("playerWrapper");
+        if (playerWrapper) {
+          playerWrapper.style.top = "0%"; // 不移位，显示完整画面
+          playerWrapper.style.height = "100%"; // 正常高度
+          playerWrapper.style.left = "0%"; // 水平居中
+          playerWrapper.style.width = "100%"; // 正常宽度
+        }
+
+        // 调整 canvas 样式
+        const canvas = document.getElementById("canvas");
+        if (canvas) {
+          canvas.style.objectFit = "contain"; // 保持完整比例
+        }
+
+        addLog("[模式切换] 已切换到全身模式", LOG_LEVEL.INFO);
+      };*/
+
+      // 切换到半身模式 - 只修改CSS，不重新初始化
+      window.switchToHalfBody = function () {
+        console.log("[数字人] 切换到半身模式");
+        currentMode = "halfBody";
+
+        const playerWrapper = document.getElementById("playerWrapper");
+        if (playerWrapper) {
+          playerWrapper.style.top = "-41%"; // 上移裁剪
+          playerWrapper.style.height = "140%"; // 增大高度用于裁剪
+          playerWrapper.style.left = "25%"; // 水平偏移
+          playerWrapper.style.width = "100%";
+        }
+
+        // 恢复 canvas 样式
+        const canvas = document.getElementById("canvas");
+        if (canvas) {
+          canvas.style.objectFit = "cover"; // 覆盖模式
+        }
+
+        addLog("[模式切换] 已切换到半身模式", LOG_LEVEL.INFO);
+      };
+
+      // 重置虚拟人（恢复静默推流状态）
+      window.resetAvatar = resetAvatar;
+
+      // 获取当前模式
+      window.getCurrentMode = function () {
+        return currentMode;
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+  </body>
+</html>

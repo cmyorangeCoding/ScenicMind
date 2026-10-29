@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cmyhyq.mapper.HotQuestionMapper">
+
+    <resultMap id="HotQuestionVOResultMap" type="com.cmyhyq.pojo.vo.HotQuestionVO">
+        <result property="question" column="question"/>
+        <result property="totalCount" column="total_count"/>
+    </resultMap>
+
+    <!-- 热门问题统计（仅MySQL，仅记录问题和频次） -->
+    <!-- 只插入3个字段：standard_question, count, stat_date -->
+    <insert id="upsertHotQuestion">
+        INSERT INTO hot_question(`standard_question`, `count`, `stat_date`)
+        VALUES (#{q}, 1, #{date})
+        ON DUPLICATE KEY UPDATE
+          `count` = `count` + 1
+    </insert>
+
+    <!-- 管理端：按时间范围查询热门问题 -->
+    <!-- 只返回问题和总频次，不返回答案 -->
+    <select id="selectTop10ByDateRange" resultMap="HotQuestionVOResultMap">
+        SELECT
+          standard_question AS question,
+          SUM(count) AS total_count
+        FROM hot_question
+        WHERE stat_date BETWEEN #{startDate} AND #{endDate}
+        GROUP BY standard_question
+        ORDER BY total_count DESC
+        LIMIT 10
+    </select>
+
+    <!-- 用户端/管理端总榜：查询历史总榜 Top10（不考虑时间，累加所有频次） -->
+    <!-- 只返回问题和总频次，不返回答案 -->
+    <select id="selectTop10AllTime" resultMap="HotQuestionVOResultMap">
+        SELECT
+          standard_question AS question,
+          SUM(count) AS total_count
+        FROM hot_question
+        GROUP BY standard_question
+        ORDER BY total_count DESC
+        LIMIT 10
+    </select>
+
+    <!-- 根据问题内容删除所有相关统计记录 -->
+    <delete id="deleteByQuestion">
+        DELETE FROM hot_question WHERE standard_question = #{question}
+    </delete>
+
+</mapper>
