@@ -19,8 +19,8 @@
 
 ## 演示
 
-- 🎬 **演示视频（B 站）**：`[【第十五届软件杯 A5 赛道】数字人导游项目视频-哔哩哔哩] (https://b23.tv/ppvdZ5R)`
-- 🖼️ **产品设计文档 / 答辩 PPT / 使用手册**：[SpringAI数字人资料](链接: https://pan.baidu.com/s/13rT9oHwB6mZBmtkXn5V1xg 提取码: 6666`)
+- 🎬 **演示视频（B 站）**：`(【第十五届软件杯 A5 赛道】数字人导游项目视频-哔哩哔哩 https://b23.tv/ppvdZ5R)`
+- 🖼️ **产品设计文档 / 答辩 PPT / 使用手册**：SpringAI数字人资料(链接: https://pan.baidu.com/s/13rT9oHwB6mZBmtkXn5V1xg 提取码: 6666`)
 - 🧪 **演示账号**：管理端 `admin / admin123`
 
 ![首页](docs/images/app-home.jpg)
