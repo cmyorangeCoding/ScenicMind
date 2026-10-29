@@ -193,15 +193,16 @@ sequenceDiagram
 
 | 首页 / 数字人入口 | AI 问答 / 路线推荐 |
 | ---- | ---- |
-| < img src="docs/images/app-home.jpg" width="360"/> | < img src="docs/images/app-ai-chat.jpg" width="360"/> |
+| <img src="docs/images/app-home.jpg" width="360"/> | <img src="docs/images/app-ai-chat.jpg" width="360"/> |
 
 | 数字人讲解 | 手绘地图导览 |
 | ---- | ---- |
-| < img src="docs/images/app-digital-human.jpg" width="360"/> | < img src="docs/images/app-guide-map.jpg" width="360"/> |
+| <img src="docs/images/app-digital-human.jpg" width="360"/> | <img src="docs/images/app-guide-map.jpg" width="360"/> |
 
 | 到点触发讲解 | 手机验证码登录 |
 | ---- | ---- |
-| < img src="docs/images/app-guide-arrival.jpg" width="360"/> | < img src="docs/images/app-login.jpg" width="360"/> |
+| <img src="docs/images/app-guide-arrival.jpg" width="360"/> | <img src="docs/images/app-login.jpg" width="360"/> |
+
 
 
 ### 管理端 · Vue3 + Element Plus
