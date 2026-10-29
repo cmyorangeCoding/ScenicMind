@@ -206,27 +206,27 @@ sequenceDiagram
 
 ### 管理端 · Vue3 + Element Plus
 
-<img src="docs/images/admin-dashboard.jpg" width="700"/>
+<img src="docs/images/admin-dashboard.jpg" width="800"/>
 
 运营数据大屏：访问量、对话量、满意度、热门景点 / 问答 TOP 榜。
 
-<img src="docs/images/admin-visitor-report.jpg" width="700"/>
+<img src="docs/images/admin-visitor-report.jpg" width="800"/>
 
 游客感受度报告：满意度分布、投诉类型、高频咨询、趋势图。
 
-<img src="docs/images/admin-knowledge.jpg" width="700"/>
+<img src="docs/images/admin-knowledge.jpg" width="800"/>
 
 知识库：知识文档维护，保存即同步向量库。
 
-<img src="docs/images/admin-attraction.jpg" width="700"/>
+<img src="docs/images/admin-attraction.jpg" width="800"/>
 
 景点库：景点档案增删改查、批量操作。
 
-<img src="docs/images/admin-hot-question.jpg" width="700"/>
+<img src="docs/images/admin-hot-question.jpg" width="800"/>
 
 高频问题：热问统计、向量库审核、删除。
 
-<img src="docs/images/admin-avatar.jpg" width="700"/>
+<img src="docs/images/admin-avatar.jpg" width="800"/>
 
 数字人管理：形象新增、音色 / 语速 / 音量配置、启停。
 
